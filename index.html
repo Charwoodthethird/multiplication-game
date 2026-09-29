@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NOCLIP">
+<meta name="theme-color" content="#1a1608">
+<title>NOCLIP: Times Tables</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ceil-h: calc(env(safe-area-inset-top) + clamp(40px, 7vh, 70px));
+  --floor-h: clamp(50px, 10vh, 110px);
+  --wall-base: #cdb85a;
+  --glow: rgba(255, 250, 210, .55);
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--wall-base);
+  font-family: 'Press Start 2P', ui-monospace, Menlo, monospace;
+  color: #fff;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+button { font: inherit; touch-action: manipulation; }
+.hidden { display: none !important; }
+
+/* ===== The room ===== */
+.wall {
+  position: fixed; inset: 0;
+  background: var(--wall-tex) repeat, var(--wall-base);
+  background-size: 64px 64px;
+  image-rendering: pixelated;
+}
+.wall::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(0,0,0,.45) 100%);
+}
+.ceiling {
+  position: fixed; left: 0; right: 0; top: 0; height: var(--ceil-h);
+  background: var(--ceil-tex) repeat;
+  background-size: 64px 64px; image-rendering: pixelated;
+  border-bottom: 4px solid rgba(0,0,0,.35);
+  display: flex; justify-content: space-around; align-items: flex-end;
+  padding-bottom: 10px; z-index: 1;
+}
+.lamp {
+  width: 16%; height: 14px; background: #fffbe6;
+  border: 3px solid #8d8a7c;
+  box-shadow: 0 0 30px 12px var(--glow), 0 12px 60px 20px var(--glow);
+}
+.lamp.flicker { animation: lampFlicker .7s steps(1) 1; }
+@keyframes lampFlicker {
+  0%,100% { opacity: 1; } 15% { opacity: .15; } 30% { opacity: 1; } 45% { opacity: .3; } 60% { opacity: 1; } 75% { opacity: .1; }
+}
+[data-theme="dark"] .lamp:not(:nth-child(2)) { background: #3a3934; box-shadow: none; }
+[data-theme="dark"] .wall::after { background: radial-gradient(ellipse at 50% 30%, transparent 20%, rgba(0,0,0,.75) 90%); }
+.floor {
+  position: fixed; left: 0; right: 0; bottom: 0; height: var(--floor-h);
+  background: var(--floor-tex) repeat;
+  background-size: 64px 64px; image-rendering: pixelated;
+  border-top: 6px solid rgba(0,0,0,.4);
+}
+.floor::after { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(0,0,0,.35), transparent 60%); }
+.door {
+  position: fixed; left: 4vw; bottom: var(--floor-h);
+  width: clamp(60px, 8vw, 110px); height: clamp(120px, 24vh, 240px);
+  background: linear-gradient(#050402, #0e0b05);
+  border: 6px solid rgba(0,0,0,.45); border-bottom: 0;
+}
+.eyes { position: absolute; top: 30%; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; opacity: 0; transition: opacity 1.2s; }
+.eyes i { display: block; width: 8px; height: 8px; background: #fff; box-shadow: 0 0 6px #fff; }
+.eyes.on { opacity: .9; animation: blink 2.6s steps(1) 1; }
+@keyframes blink { 0%,100% { transform: translateX(-50%) scaleY(1); } 50% { transform: translateX(-50%) scaleY(.1); } 55% { transform: translateX(-50%) scaleY(1); } }
+#dim { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 5; }
+#dim.flick { animation: dimFlick .55s steps(1) 1; }
+@keyframes dimFlick { 0% { opacity: .55; } 20% { opacity: .05; } 40% { opacity: .65; } 60% { opacity: .1; } 80% { opacity: .4; } 100% { opacity: 0; } }
+
+/* ===== Layout ===== */
+#app {
+  position: fixed; inset: 0; z-index: 2;
+  padding: calc(var(--ceil-h) + 12px) calc(16px + env(safe-area-inset-right)) calc(var(--floor-h) * .45 + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  display: flex; justify-content: center;
+}
+.screen { width: 100%; max-width: 760px; height: 100%; display: flex; flex-direction: column; }
+#title { justify-content: center; align-items: center; gap: clamp(14px, 2.6vh, 26px); text-align: center; }
+#game { justify-content: space-between; gap: 10px; }
+.mid { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: clamp(10px, 2vh, 20px); min-height: 0; }
+
+/* ===== Minecraft-style pieces ===== */
+.btn {
+  color: #fff; background: #6f6f6f; border: 3px solid #000; border-radius: 0;
+  box-shadow: inset 3px 3px 0 #a9a9a9, inset -3px -4px 0 #4a4a4a;
+  text-shadow: 3px 3px 0 #3a3a3a; padding: 14px 18px; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+}
+.btn:active { background: #5b5b5b; }
+.btn.right { background: #2f9a37; box-shadow: inset 3px 3px 0 #6fd66f, inset -3px -4px 0 #1d6b24; }
+.btn.wrong { background: #b3322b; box-shadow: inset 3px 3px 0 #e36b63, inset -3px -4px 0 #7a1c17; animation: shake .35s; }
+.btn.dim { opacity: .4; }
+.btn.armed { background: #b3322b; }
+.btn:disabled { opacity: .45; }
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+.dark-panel {
+  background: rgba(8, 6, 2, .74); border: 4px solid #000;
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.08);
+}
+.coin { width: 1em; height: 1em; vertical-align: -0.15em; }
+.icon svg { width: 22px; height: 22px; display: block; }
+
+/* Title */
+.logo-wrap { position: relative; }
+.logo {
+  font-size: clamp(44px, 11vw, 104px); color: #d8d8d8; letter-spacing: 4px;
+  text-shadow: 4px 4px 0 #555, 8px 8px 0 #000;
+}
+.splash {
+  position: absolute; right: -6%; top: -8px; color: #ffff3c; font-size: clamp(10px, 1.8vw, 16px);
+  text-shadow: 2px 2px 0 #3f3f00; transform: rotate(-14deg); animation: splash .5s ease-in-out infinite alternate; white-space: nowrap;
+}
+@keyframes splash { from { transform: rotate(-14deg) scale(1); } to { transform: rotate(-14deg) scale(1.08); } }
+.sub { font-size: clamp(11px, 2vw, 18px); color: #fff; text-shadow: 2px 2px 0 #000; }
+.lore { padding: 18px; font-size: clamp(10px, 1.6vw, 14px); line-height: 1.9; max-width: 620px; text-align: left; }
+.lore b { color: #ffe14a; font-weight: normal; }
+.lore ul { margin: 12px 0 0; padding: 0; list-style: none; }
+.lore li::before { content: '> '; color: #8b8b8b; }
+#titleStats { font-size: clamp(10px, 1.6vw, 14px); text-shadow: 2px 2px 0 #000; }
+.big { font-size: clamp(22px, 4vw, 34px); padding: 20px 60px; }
+
+/* HUD */
+.hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lvl { padding: 10px 12px; }
+#lvlNum { display: block; font-size: clamp(12px, 2vw, 18px); color: #ffe14a; }
+#lvlName { display: block; font-size: clamp(8px, 1.3vw, 11px); margin-top: 6px; color: #ddd; }
+.hud-r { display: flex; gap: 8px; align-items: center; }
+.chip { padding: 10px 12px; font-size: clamp(12px, 1.9vw, 17px); display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.chip small { font-size: .6em; color: #bbb; }
+.icon { padding: 10px; }
+
+/* Streak */
+.streak { display: flex; align-items: center; gap: 12px; justify-content: center; font-size: clamp(10px, 1.7vw, 14px); text-shadow: 2px 2px 0 #000; }
+.pips { display: flex; gap: 3px; }
+.pips i { width: clamp(8px, 1.4vw, 14px); height: clamp(8px, 1.4vw, 14px); background: rgba(0,0,0,.55); border: 2px solid #000; }
+.pips i.on { background: #ff9d1c; }
+.pips i.mark { border-color: #ffe14a; }
+
+/* Question */
+.qpanel { padding: clamp(18px, 4vh, 40px) 12px; text-align: center; }
+#q { font-size: clamp(44px, 10vw, 100px); text-shadow: 6px 6px 0 #000; white-space: nowrap; }
+#fb { margin-top: 18px; font-size: clamp(14px, 2.6vw, 24px); min-height: 1.2em; }
+#fb.good { color: #7dff4a; }
+#fb.bad { color: #ff6b5e; }
+.answers { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 1.8vw, 18px); }
+.answers .btn { height: clamp(72px, 13vh, 124px); font-size: clamp(26px, 5.2vw, 52px); text-shadow: 4px 4px 0 #3a3a3a; }
+
+/* XP bar */
+.xp { position: relative; text-align: center; }
+#xpLvl { font-size: clamp(16px, 2.6vw, 24px); color: #80ff20; text-shadow: 2px 0 #000, -2px 0 #000, 0 2px #000, 0 -2px #000; margin-bottom: 6px; }
+.xpbar { height: 20px; background: #1b1b1b; border: 3px solid #000; position: relative; overflow: hidden; }
+#xpFill { height: 100%; width: 0; background: linear-gradient(#c3ff6a, #6cc01f); transition: width .35s; }
+.xpbar::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 3px), rgba(0,0,0,.8) calc(10% - 3px) 10%); }
+#xpTxt { margin-top: 8px; font-size: clamp(9px, 1.4vw, 12px); text-shadow: 2px 2px 0 #000; }
+.float { position: absolute; left: 50%; bottom: 40px; font-size: 22px; pointer-events: none; animation: floatUp 1s forwards; text-shadow: 3px 3px 0 #000; }
+.float.good { color: #80ff20; }
+.float.bad { color: #ff5a4a; }
+@keyframes floatUp { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -60px); } }
+
+/* Toasts */
+.toast {
+  position: fixed; left: 50%; top: 32%; z-index: 20; pointer-events: none;
+  font-size: clamp(18px, 3.4vw, 32px); color: #ffe14a; text-shadow: 4px 4px 0 #3a2a00, 0 0 20px rgba(0,0,0,.8);
+  white-space: nowrap; animation: pop 1.8s forwards;
+}
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, 20px) scale(.6); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.1); }
+  25% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -30px); }
+}
+
+/* Modal (Minecraft inventory-style panel) */
+#modal { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.mc {
+  background: #c6c6c6; color: #3f3f3f; border: 3px solid #000;
+  box-shadow: inset 4px 4px 0 #fff, inset -4px -4px 0 #555;
+  padding: 24px; width: 100%; max-width: 580px; max-height: calc(100dvh - 32px); overflow-y: auto;
+  -webkit-overflow-scrolling: touch; text-align: center; line-height: 1.7;
+  -webkit-user-select: none; user-select: none;
+}
+.mc h2 { font-size: clamp(18px, 3.4vw, 26px); margin: 4px 0 16px; font-weight: normal; }
+.mc h3 { font-size: 14px; margin: 22px 0 10px; font-weight: normal; text-align: left; border-bottom: 3px solid #8b8b8b; padding-bottom: 6px; }
+.mc p { font-size: 12px; margin: 10px 0; }
+.mc .btn { font-size: 14px; }
+.mc .wide { width: 100%; margin-top: 16px; font-size: 18px; padding: 16px; }
+.mc .ghost { background: #8b8b8b; }
+.big-coin { font-size: 80px; animation: spin 1.2s ease-out 1; }
+@keyframes spin { from { transform: scale(.2) rotateY(720deg); } to { transform: scale(1) rotateY(0); } }
+.lvbig { font-size: 26px; color: #2d6ccf; }
+.cash { color: #1f8a2a !important; font-size: 30px !important; }
+.pin-dots { display: flex; gap: 12px; justify-content: center; margin: 10px 0; }
+.pin-dots i { width: 22px; height: 22px; border: 3px solid #3f3f3f; background: #fff; }
+.pin-dots i.on { background: #3f3f3f; }
+.pin-err { color: #b3322b; font-size: 12px; min-height: 1.4em; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 320px; margin: 8px auto 0; }
+.keypad .btn { font-size: 20px; height: 64px; padding: 0; }
+.keypad .btn.small { font-size: 12px; }
+.owed { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #8b8b8b; border: 3px solid #555; padding: 14px; color: #fff; text-shadow: 2px 2px 0 #3f3f3f; }
+.owed .amt { font-size: 30px; color: #7dff4a; }
+.owed .lbl { font-size: 11px; text-align: left; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; text-align: left; }
+.stats div { background: #b2b2b2; padding: 8px; border: 2px solid #8b8b8b; }
+.stats b { display: block; font-size: 16px; font-weight: normal; color: #222; margin-top: 4px; }
+.grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; }
+.grid .gh { font-size: 9px; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
+.cell { aspect-ratio: 1; border: 1px solid rgba(0,0,0,.35); padding: 0; min-width: 0; cursor: pointer; }
+.cell.known { background: #3fae3f; }
+.cell.learning { background: #e0a030; }
+.cell.new { background: #8b8b8b; }
+.legend { display: flex; gap: 14px; justify-content: center; font-size: 10px; margin-top: 10px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; margin-right: 4px; border: 1px solid #555; }
+#cellInfo { font-size: 11px; min-height: 1.6em; margin-top: 8px; }
+.trouble { list-style: none; padding: 0; margin: 0; font-size: 12px; text-align: left; }
+.trouble li { display: flex; justify-content: space-between; padding: 7px 4px; border-bottom: 2px solid #b0b0b0; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+@media (max-width: 560px) {
+  .door { display: none; }
+  .hud { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body data-theme="yellow">
+<div class="wall"></div>
+<div class="door"><div class="eyes" id="eyes"><i></i><i></i></div></div>
+<div class="floor"></div>
+<div class="ceiling"><div class="lamp"></div><div class="lamp"></div><div class="lamp"></div><div class="lamp"></div></div>
+<div id="dim"></div>
+
+<div id="app">
+  <!-- Title -->
+  <section id="title" class="screen">
+    <div class="logo-wrap">
+      <div class="logo">NOCLIP</div>
+      <div class="splash" id="splash"></div>
+    </div>
+    <div class="sub">TIMES TABLES OF THE BACKROOMS</div>
+    <div class="dark-panel lore">
+      You clipped out of reality and into the Backrooms. The only way through is math.
+      <ul>
+        <li><b>+1</b> right answer, <b>-1</b> wrong</li>
+        <li><b>10 in a row:</b> +1 bonus</li>
+        <li><b>20 in a row:</b> +2 bonus</li>
+        <li><b>100 points</b> = 1 coin = next level</li>
+        <li><b>5 coins</b> = $1 (up to $5 a week)</li>
+      </ul>
+    </div>
+    <div id="titleStats"></div>
+    <button class="btn big" id="enterBtn">ENTER</button>
+  </section>
+
+  <!-- Game -->
+  <section id="game" class="screen hidden">
+    <header class="hud">
+      <div class="dark-panel lvl"><span id="lvlNum">LEVEL 0</span><span id="lvlName">THE LOBBY</span></div>
+      <div class="hud-r">
+        <div class="dark-panel chip" id="coinChip"></div>
+        <div class="dark-panel chip" id="cashChip"></div>
+        <button class="btn icon" id="soundBtn" aria-label="Sound"></button>
+        <button class="btn icon" id="parentBtn" aria-label="Parent">
+          <svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="#e6e6e6" d="M2 0h4v1h-4zM1 1h1v3h-1zM6 1h1v3h-1z"/><path fill="#e6b800" d="M1 4h6v4h-6z"/><path fill="#5a4200" d="M3 5h2v2h-2z"/></svg>
+        </button>
+      </div>
+    </header>
+    <div class="mid">
+      <div class="streak"><span id="streakTxt">STREAK 0</span><div class="pips" id="pips"></div></div>
+      <div class="dark-panel qpanel"><div id="q">&nbsp;</div><div id="fb">&nbsp;</div></div>
+      <div class="answers" id="answers">
+        <button class="btn"></button><button class="btn"></button>
+        <button class="btn"></button><button class="btn"></button>
+      </div>
+    </div>
+    <div class="xp" id="xp">
+      <div id="xpLvl">0</div>
+      <div class="xpbar"><div id="xpFill"></div></div>
+      <div id="xpTxt"></div>
+    </div>
+  </section>
+</div>
+
+<div id="modal" class="hidden"><div class="mc" id="modalBody"></div></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ===== Settings (safe to tweak) ===== */
+const CONFIG = {
+  knownShare: 0.6,      // share of questions drawn from facts he already knows
+  activeLearning: 6,    // how many not-yet-known facts are in rotation at once
+  pointsPerCoin: 100,
+  coinsPerDollar: 5,
+  weeklyDollarCap: 5,   // week resets Monday
+  bonusAt10: 1,         // extra points at 10 in a row (and 30, 50...)
+  bonusAt20: 2,         // extra points at 20 in a row (and 40, 60...)
+};
+const SAVE_KEY = 'noclip-save-v1';
+
+/* ===== Facts: every pair 1-12, easiest tables introduced first ===== */
+const ORDER = [1, 10, 2, 5, 11, 3, 4, 9, 6, 12, 8, 7];
+const FACTS = [];
+for (let a = 1; a <= 12; a++) for (let b = a; b <= 12; b++) {
+  const r1 = ORDER.indexOf(a), r2 = ORDER.indexOf(b);
+  FACTS.push({ a, b, k: a + 'x' + b, d: Math.min(r1, r2) * 20 + Math.max(r1, r2) });
+}
+FACTS.sort((x, y) => x.d - y.d);
+const keyOf = (a, b) => Math.min(a, b) + 'x' + Math.max(a, b);
+const sum = arr => arr.reduce((t, x) => t + x, 0);
+
+/* ===== Levels & themes ===== */
+const LEVELS = [
+  ['The Lobby', 'yellow'], ['Habitable Zone', 'concrete'], ['Pipe Dreams', 'pipes'],
+  ['Electrical Station', 'pipes'], ['Abandoned Office', 'office'], ['Hotel Hallways', 'office'],
+  ['Lights Out', 'dark'], ['The Poolrooms', 'pool'], ['Endless Warehouse', 'concrete'],
+  ['Carpet Maze', 'yellow'], ['Server Room', 'dark'], ['Flooded Lobby', 'pool'],
+  ['Boiler Room', 'pipes'], ['Night Shift Office', 'office'], ['Parking Garage', 'concrete'],
+  ['Deep Lobby', 'yellow'], ['Blackout Hall', 'dark'], ['Waterpark After Dark', 'pool'],
+  ['Steam Tunnels', 'pipes'], ['Cubicle Farm', 'office'], ['The Exit?', 'yellow'],
+];
+const THEME_CYCLE = ['yellow', 'concrete', 'pipes', 'office', 'dark', 'pool'];
+const levelInfo = n => n < LEVELS.length
+  ? { name: LEVELS[n][0], theme: LEVELS[n][1] }
+  : { name: 'Deep Backrooms', theme: THEME_CYCLE[n % THEME_CYCLE.length] };
+
+const THEMES = {
+  yellow:   { wall: ['#cdb85a', '#c4ae52', '#d4bf62', '#bda84c'], wallLine: '#a8923c', wallPat: 'stripes',
+              floor: ['#8c7b3b', '#837236', '#958441', '#7a6a32'], ceil: ['#dcd6b4', '#d3cca8'], ceilLine: '#a9a283', glow: 'rgba(255,250,210,.55)' },
+  concrete: { wall: ['#8e8e87', '#85857e', '#979790', '#7c7c75'], wallLine: '#6d6d66', wallPat: 'blocks',
+              floor: ['#5f5f59', '#575751', '#67675f'], ceil: ['#9d9d96', '#94948d'], ceilLine: '#6f6f69', glow: 'rgba(235,245,255,.45)' },
+  pipes:    { wall: ['#4b4139', '#433a32', '#554a41', '#3d352e'], wallLine: '#2c2621', wallPat: 'blocks',
+              floor: ['#3a2f25', '#332920', '#42362b'], ceil: ['#2f2a26', '#29241f'], ceilLine: '#1b1815', glow: 'rgba(255,190,120,.45)' },
+  office:   { wall: ['#bcb19a', '#b3a891', '#c4b9a3', '#aca189'], wallLine: '#958a73', wallPat: 'stripes',
+              floor: ['#3f5070', '#384866', '#475a7b'], ceil: ['#d9d7cf', '#cfcdc5'], ceilLine: '#a5a39b', glow: 'rgba(240,248,255,.5)' },
+  dark:     { wall: ['#2e2c27', '#282621', '#34322c', '#23211d'], wallLine: '#1a1916', wallPat: 'stripes',
+              floor: ['#1e1d1a', '#1a1916', '#23211e'], ceil: ['#262521', '#22211d'], ceilLine: '#151411', glow: 'rgba(255,250,210,.35)' },
+  pool:     { wall: ['#e9f1f1', '#e1eaeb', '#f1f6f6', '#d9e5e6'], wallLine: '#b7cccd', wallPat: 'tiles',
+              floor: ['#5cc3d1', '#51b6c4', '#69cfdc', '#7fdbe6'], ceil: ['#eef4f4', '#e4eced'], ceilLine: '#bfd1d2', glow: 'rgba(220,255,255,.5)' },
+};
+
+// 16x16 blocky texture, scaled up with pixelated rendering
+function tex(pal, line, pat, seed) {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const g = c.getContext('2d'); let s = seed;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    let col = pal[Math.floor(rnd() * pal.length)];
+    if (pat === 'stripes' && x % 8 === 3) col = line;
+    if (pat === 'tiles' && (x % 8 === 0 || y % 8 === 0)) col = line;
+    if (pat === 'blocks' && (y % 8 === 0 || x === (y < 8 ? 0 : 8))) col = line;
+    g.fillStyle = col; g.fillRect(x, y, 1, 1);
+  }
+  return c.toDataURL();
+}
+const texCache = {};
+function applyTheme() {
+  const info = levelInfo(S.level), T = THEMES[info.theme];
+  if (!texCache[info.theme]) texCache[info.theme] = {
+    wall: tex(T.wall, T.wallLine, T.wallPat, 1234),
+    floor: tex(T.floor, null, 'noise', 777),
+    ceil: tex(T.ceil, T.ceilLine, 'tiles', 4321),
+  };
+  const t = texCache[info.theme], st = document.documentElement.style;
+  st.setProperty('--wall-tex', `url(${t.wall})`);
+  st.setProperty('--floor-tex', `url(${t.floor})`);
+  st.setProperty('--ceil-tex', `url(${t.ceil})`);
+  st.setProperty('--wall-base', T.wall[0]);
+  st.setProperty('--glow', T.glow);
+  document.body.dataset.theme = info.theme;
+  $('#lvlNum').textContent = 'LEVEL ' + S.level;
+  $('#lvlName').textContent = info.name.toUpperCase();
+}
+
+/* ===== Saved state ===== */
+function weekKey(d = new Date()) {
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  return m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0') + '-' + String(m.getDate()).padStart(2, '0');
+}
+function freshState() {
+  return {
+    v: 1, facts: {}, recent: [], cur: null,
+    bank: 0, streak: 0, best: 0, coins: 0, level: 0,
+    week: weekKey(), weekDollars: 0, owed: 0, paid: 0, capNote: null,
+    q: 0, right: 0, wrong: 0, earned: 0,
+    pin: null, sound: 1,
+  };
+}
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (s && s.v === 1) return Object.assign(freshState(), s);
+  } catch (e) {}
+  return freshState();
+}
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
+let S = load();
+
+const rec = k => S.facts[k] || (S.facts[k] = { h: [], n: 0, c: 0, last: -99, act: false });
+// "Known" = right at least 3 of the last 4 tries (a first-try correct answer counts as known)
+const isKnown = k => { const f = S.facts[k]; return !!f && f.h.length >= 3 && sum(f.h) >= 3; };
+const statusOf = k => isKnown(k) ? 'known' : (S.facts[k] && S.facts[k].n ? 'learning' : 'new');
+
+/* ===== Money ===== */
+const events = [];
+function convertCoins() {
+  let n = 0;
+  while (S.coins >= CONFIG.coinsPerDollar && S.weekDollars < CONFIG.weeklyDollarCap) {
+    S.coins -= CONFIG.coinsPerDollar; S.weekDollars++; S.owed++; n++;
+  }
+  for (let i = 0; i < n; i++) events.push({ t: 'dollar' });
+  return n;
+}
+function checkWeek() {
+  const w = weekKey();
+  if (w !== S.week) { S.week = w; S.weekDollars = 0; convertCoins(); save(); }
+}
+function addPoints(n) {
+  S.bank += n; S.earned += n;
+  while (S.bank >= CONFIG.pointsPerCoin) {
+    S.bank -= CONFIG.pointsPerCoin; S.coins++; S.level++;
+    events.push({ t: 'coin' });
+    if (!convertCoins() && S.coins >= CONFIG.coinsPerDollar && S.capNote !== S.week) {
+      S.capNote = S.week; events.push({ t: 'cap' });
+    }
+  }
+}
+
+/* ===== Picking questions (60% known / 40% learning) ===== */
+function weightedPick(items, weights) {
+  let r = Math.random() * sum(weights);
+  for (let i = 0; i < items.length; i++) { r -= weights[i]; if (r <= 0) return items[i]; }
+  return items[items.length - 1];
+}
+function pickFact() {
+  const learning = FACTS.filter(f => S.facts[f.k] && S.facts[f.k].act && !isKnown(f.k));
+  for (const f of FACTS) {  // keep the learning group topped up with the next-easiest new facts
+    if (learning.length >= CONFIG.activeLearning) break;
+    if (!S.facts[f.k] || !S.facts[f.k].act) { rec(f.k).act = true; learning.push(f); }
+  }
+  const known = FACTS.filter(f => isKnown(f.k));
+  // ease into the 60/40 split so a tiny known pile doesn't repeat the same 2-3 facts
+  const share = CONFIG.knownShare * Math.min(1, known.length / 12);
+  const useKnown = known.length && (Math.random() < share || !learning.length);
+  const pool = useKnown ? known : (learning.length ? learning : FACTS);
+  let choices = pool.filter(f => !S.recent.includes(f.k));
+  if (!choices.length) choices = pool;
+  const weights = choices.map(f => {
+    const r = S.facts[f.k] || { h: [], last: -99 };
+    const gap = Math.min(S.q - r.last, 40);
+    if (!useKnown) return 1 + gap / 2;
+    let w = 1 + gap / 4 + (4 - sum(r.h)) * 3;          // long-unseen and recently-missed come back sooner
+    if (f.a === 1 || f.a === 10 || f.b === 10) w *= 0.5; // go easy on the trivial ones
+    return w;
+  });
+  return weightedPick(choices, weights);
+}
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr;
+}
+// Wrong answers that look plausible: neighbours in the same table, off-by-a-bit, digit swaps
+function makeOptions(a, b) {
+  const p = a * b, picked = [];
+  const ok = x => x > 0 && x !== p && !picked.includes(x);
+  const near = shuffle([(a + 1) * b, (a - 1) * b, a * (b + 1), a * (b - 1)]);
+  const other = shuffle([p + 1, p - 1, p + 2, p - 2, p + 10, p - 10, (a + 1) * (b + 1), (a - 1) * (b - 1),
+    p >= 10 ? +String(p).split('').reverse().join('') : 0]);
+  for (const x of near) if (picked.length < 2 && ok(x)) picked.push(x);
+  for (const x of other.concat(near)) if (picked.length < 3 && ok(x)) picked.push(x);
+  while (picked.length < 3) { const x = p + Math.floor(Math.random() * 21) - 10; if (ok(x)) picked.push(x); }
+  return shuffle([p, ...picked]);
+}
+
+/* ===== Sound (generated, no files) ===== */
+const Sound = {
+  ctx: null, hum: null,
+  init() {
+    if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    this.setHum(S.sound === 2);
+  },
+  tone(f, dur, type = 'square', vol = 0.06, at = 0) {
+    if (!this.ctx || !S.sound) return;
+    const t = this.ctx.currentTime + at, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t + dur + 0.02);
+  },
+  good() { this.tone(784, .07); this.tone(1175, .12, 'square', .06, .07); },
+  bad() { this.tone(150, .28, 'sawtooth', .07); this.tone(110, .3, 'sawtooth', .06, .08); },
+  bonus() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, .12, 'square', .06, i * .08)); },
+  coin() { [988, 1319, 1568, 1976].forEach((f, i) => this.tone(f, .16, 'square', .05, i * .09)); },
+  click() { this.tone(420, .03, 'square', .03); },
+  setHum(on) {  // fluorescent-light buzz
+    if (on && this.ctx && !this.hum) {
+      const c = this.ctx, g = c.createGain(), lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 500; g.gain.value = 0.018;
+      const o1 = c.createOscillator(), o2 = c.createOscillator();
+      o1.type = 'sawtooth'; o1.frequency.value = 120; o2.type = 'sine'; o2.frequency.value = 240;
+      o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(c.destination); o1.start(); o2.start();
+      this.hum = [o1, o2];
+    } else if (!on && this.hum) { this.hum.forEach(o => o.stop()); this.hum = null; }
+  },
+};
+
+/* ===== UI helpers ===== */
+const $ = s => document.querySelector(s);
+const btns = [...document.querySelectorAll('#answers .btn')];
+const COIN = '<svg class="coin" viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="#6b4700" d="M2 0h4v1h1v1h1v4h-1v1h-1v1h-4v-1h-1v-1h-1v-4h1v-1h1z"/><path fill="#ffd21f" d="M2 1h4v1h1v4h-1v1h-4v-1h-1v-4h1z"/><path fill="#fff29a" d="M2 2h1v3h-1zM3 1h2v1h-2z"/><path fill="#c98f00" d="M4 3h1v2h-1z"/></svg>';
+const SPEAKER = ['#e6e6e6', '#e6e6e6', '#e6e6e6'].map((c, i) =>
+  `<svg viewBox="0 0 8 8" shape-rendering="crispEdges"><path fill="#e6e6e6" d="M0 3h2v2h-2zM2 2h1v4h-1zM3 1h1v6h-1z"/>${
+    i === 0 ? '<path fill="#ff5a4a" d="M5 2h1v1h1v1h-1v-1h-1zM6 4h1v1h-1v1h-1v-1h1z"/>' :
+    i === 1 ? '<path fill="#e6e6e6" d="M5 3h1v2h-1z"/>' :
+              '<path fill="#e6e6e6" d="M5 3h1v2h-1zM7 1h1v6h-1z"/>'}</svg>`);
+const escape = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function renderHUD() {
+  $('#coinChip').innerHTML = `${COIN}<span>${S.coins}</span><small>/${CONFIG.coinsPerDollar}</small>`;
+  $('#cashChip').innerHTML = `<span style="color:#7dff4a">$${S.weekDollars}</span><small>/${CONFIG.weeklyDollarCap} WK</small>`;
+  const inCycle = S.streak % 20 === 0 && S.streak > 0 ? 20 : S.streak % 20;
+  $('#streakTxt').textContent = 'STREAK ' + S.streak;
+  $('#pips').innerHTML = Array.from({ length: 20 }, (_, i) =>
+    `<i class="${i < inCycle ? 'on' : ''} ${i === 9 || i === 19 ? 'mark' : ''}"></i>`).join('');
+  $('#xpLvl').textContent = S.level;
+  $('#xpFill').style.width = (S.bank / CONFIG.pointsPerCoin * 100) + '%';
+  $('#xpTxt').textContent = `${S.bank} / ${CONFIG.pointsPerCoin} POINTS TO NEXT COIN`;
+  $('#soundBtn').innerHTML = SPEAKER[S.sound];
+}
+function toast(text) {
+  const el = document.createElement('div'); el.className = 'toast'; el.textContent = text;
+  document.body.appendChild(el); setTimeout(() => el.remove(), 1900);
+}
+function floatTxt(text, cls) {
+  const el = document.createElement('div'); el.className = 'float ' + cls; el.textContent = text;
+  $('#xp').appendChild(el); setTimeout(() => el.remove(), 1000);
+}
+function flicker() {
+  const d = $('#dim'); d.classList.remove('flick'); void d.offsetWidth; d.classList.add('flick');
+  document.querySelectorAll('.lamp').forEach(l => { l.classList.remove('flicker'); void l.offsetWidth; l.classList.add('flicker'); });
+}
+function openModal(html) { $('#modalBody').innerHTML = html; $('#modalBody').scrollTop = 0; $('#modal').classList.remove('hidden'); }
+function closeModal() { $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
+
+/* ===== Game loop ===== */
+let locked = true;
+const PRAISE = ['NICE!', 'CORRECT!', 'YES!', 'GOT IT!', 'SOLID!', 'EPIC!', 'LET\'S GO!'];
+
+function nextQuestion() {
+  if (!S.cur) {
+    const f = pickFact();
+    const [a, b] = Math.random() < 0.5 ? [f.a, f.b] : [f.b, f.a];
+    S.cur = { a, b, opts: makeOptions(a, b) };
+    save();
+  }
+  const { a, b, opts } = S.cur;
+  $('#q').textContent = `${a} × ${b}`;
+  $('#fb').textContent = ' '; $('#fb').className = '';
+  btns.forEach((btn, i) => { btn.textContent = opts[i]; btn.className = 'btn'; });
+  locked = false;
+}
+
+function answer(i) {
+  if (locked || !S.cur) return;
+  locked = true;
+  const { a, b, opts } = S.cur, p = a * b, ok = opts[i] === p, k = keyOf(a, b), r = rec(k);
+  r.act = true;
+  if (r.n === 0 && ok) r.h = [1, 1, 1];
+  else { r.h.push(ok ? 1 : 0); if (r.h.length > 4) r.h.shift(); }
+  r.n++; if (ok) r.c++; r.last = S.q; S.q++;
+  S.recent = [k, ...S.recent].slice(0, 3);
+  S.cur = null;
+  checkWeek();
+
+  btns.forEach((btn, j) => btn.classList.add(opts[j] === p ? 'right' : j === i ? 'wrong' : 'dim'));
+  let delay;
+  if (ok) {
+    S.right++; S.streak++; S.best = Math.max(S.best, S.streak);
+    let pts = 1;
+    if (S.streak % 20 === 10) { pts += CONFIG.bonusAt10; toast(`${S.streak} STREAK! +${CONFIG.bonusAt10} BONUS`); Sound.bonus(); }
+    else if (S.streak % 20 === 0) { pts += CONFIG.bonusAt20; toast(`${S.streak} STREAK! +${CONFIG.bonusAt20} BONUS`); Sound.bonus(); }
+    else Sound.good();
+    addPoints(pts);
+    floatTxt('+' + pts, 'good');
+    $('#fb').textContent = PRAISE[Math.floor(Math.random() * PRAISE.length)]; $('#fb').className = 'good';
+    delay = 700;
+  } else {
+    S.wrong++; S.streak = 0; S.bank = Math.max(0, S.bank - 1);
+    floatTxt('-1', 'bad'); Sound.bad(); flicker();
+    $('#fb').textContent = `${a} × ${b} = ${p}`; $('#fb').className = 'bad';
+    delay = 1900;
+  }
+  renderHUD(); save();
+  setTimeout(() => events.length ? showEvent() : nextQuestion(), delay);
+}
+
+function showEvent() {
+  const e = events.shift();
+  if (!e) { closeModal(); nextQuestion(); return; }
+  let html = '';
+  if (e.t === 'coin') {
+    Sound.coin(); applyTheme(); renderHUD();
+    html = `<div class="big-coin">${COIN}</div><h2>COIN FOUND!</h2>
+      <p>You noclipped into</p><div class="lvbig">LEVEL ${S.level}</div>
+      <p>${escape(levelInfo(S.level).name.toUpperCase())}</p>
+      <p>Wallet: ${S.coins} of ${CONFIG.coinsPerDollar} coins toward $1</p>`;
+  } else if (e.t === 'dollar') {
+    Sound.bonus(); renderHUD();
+    html = `<h2 class="cash">+$1 EARNED!</h2><p>5 coins traded for a real dollar.</p>
+      <p>This week: $${S.weekDollars} of $${CONFIG.weeklyDollarCap}</p><p>Time to collect!</p>`;
+  } else if (e.t === 'cap') {
+    html = `<h2>WEEKLY MAX!</h2><p>You've earned all $${CONFIG.weeklyDollarCap} for this week.</p>
+      <p>Keep going: extra coins are saved and turn into dollars next week (starting Monday).</p>`;
+  }
+  openModal(html + '<button class="btn wide" id="evOk">CONTINUE</button>');
+  $('#evOk').onclick = showEvent;
+}
+
+/* ===== Parent area ===== */
+function pinPad(title, onDone, err = '') {
+  let v = '', done = false;
+  openModal(`<h2>${title}</h2><div class="pin-dots" id="pinDots"></div><div class="pin-err">${err}</div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'CLR', 0, 'DEL'].map(k =>
+      `<button class="btn key ${typeof k === 'string' ? 'small' : ''}" data-k="${k}">${k}</button>`).join('')}</div>
+    <button class="btn wide ghost" id="pinCancel">CANCEL</button>`);
+  const dots = () => { $('#pinDots').innerHTML = [0, 1, 2, 3].map(i => `<i class="${i < v.length ? 'on' : ''}"></i>`).join(''); };
+  document.querySelectorAll('#modalBody .key').forEach(b => b.onclick = () => {
+    if (done) return;
+    const k = b.dataset.k; Sound.click();
+    if (k === 'DEL') v = v.slice(0, -1); else if (k === 'CLR') v = ''; else if (v.length < 4) v += k;
+    dots();
+    if (v.length === 4) { done = true; setTimeout(() => onDone(v), 150); }
+  });
+  $('#pinCancel').onclick = closeModal;
+  dots();
+}
+function createPin(err) {
+  pinPad('CREATE A 4-DIGIT PARENT PIN', v1 => pinPad('ENTER IT AGAIN', v2 => {
+    if (v1 === v2) { S.pin = v1; save(); dashboard(); } else createPin('PINS DID NOT MATCH');
+  }), err);
+}
+function enterPin(err) { pinPad('PARENT PIN', v => v === S.pin ? dashboard() : enterPin('WRONG PIN'), err); }
+function openParent() { if (locked) return; S.pin ? enterPin() : createPin(); }
+
+function twoTap(btn, action) {
+  const label = btn.textContent; let armed = false;
+  btn.onclick = () => {
+    if (armed) return action();
+    armed = true; btn.textContent = 'TAP AGAIN TO CONFIRM'; btn.classList.add('armed');
+    setTimeout(() => { armed = false; btn.textContent = label; btn.classList.remove('armed'); }, 3000);
+  };
+}
+
+function dashboard() {
+  checkWeek();
+  const total = S.right + S.wrong;
+  const knownN = FACTS.filter(f => isKnown(f.k)).length;
+  let grid = '<div class="grid"><div></div>';
+  for (let b = 1; b <= 12; b++) grid += `<div class="gh">${b}</div>`;
+  for (let a = 1; a <= 12; a++) {
+    grid += `<div class="gh">${a}</div>`;
+    for (let b = 1; b <= 12; b++) grid += `<button class="cell ${statusOf(keyOf(a, b))}" data-a="${a}" data-b="${b}"></button>`;
+  }
+  grid += '</div>';
+  const trouble = FACTS.filter(f => S.facts[f.k] && S.facts[f.k].n && S.facts[f.k].c < S.facts[f.k].n)
+    .sort((x, y) => (isKnown(x.k) - isKnown(y.k)) || (S.facts[x.k].c / S.facts[x.k].n - S.facts[y.k].c / S.facts[y.k].n))
+    .slice(0, 8)
+    .map(f => { const r = S.facts[f.k]; return `<li><span>${f.a} × ${f.b} = ${f.a * f.b}</span><span>${r.c}/${r.n} ${isKnown(f.k) ? '' : '• learning'}</span></li>`; })
+    .join('') || '<li><span>No misses yet</span></li>';
+
+  openModal(`<h2>PARENT</h2>
+    <div class="owed"><div class="lbl">DOLLARS OWED<div class="amt">$${S.owed}</div></div>
+      <button class="btn" id="paidBtn" ${S.owed ? '' : 'disabled'}>MARK PAID</button></div>
+    <p>This week: $${S.weekDollars} of $${CONFIG.weeklyDollarCap} earned (resets Monday)<br>Paid out so far: $${S.paid}</p>
+    <h3>STATS</h3>
+    <div class="stats">
+      <div>Questions<b>${total}</b></div>
+      <div>Accuracy<b>${total ? Math.round(S.right / total * 100) : 0}%</b></div>
+      <div>Facts known<b>${knownN} / ${FACTS.length}</b></div>
+      <div>Best streak<b>${S.best}</b></div>
+      <div>Level / coins<b>${S.level} / ${S.coins}</b></div>
+      <div>Points to coin<b>${S.bank} / ${CONFIG.pointsPerCoin}</b></div>
+    </div>
+    <h3>FACT MAP</h3>${grid}
+    <div class="legend"><span><i style="background:#3fae3f"></i>KNOWN</span><span><i style="background:#e0a030"></i>LEARNING</span><span><i style="background:#8b8b8b"></i>NOT YET SEEN</span></div>
+    <div id="cellInfo">Tap a square for details</div>
+    <h3>NEEDS PRACTICE</h3><ul class="trouble">${trouble}</ul>
+    <h3>SETTINGS</h3>
+    <div class="row2"><button class="btn" id="pinBtn">CHANGE PIN</button><button class="btn" id="resetBtn">RESET ALL</button></div>
+    <button class="btn wide" id="closeBtn">BACK TO GAME</button>`);
+
+  twoTap($('#paidBtn'), () => { S.paid += S.owed; S.owed = 0; save(); dashboard(); });
+  twoTap($('#resetBtn'), () => {
+    const keep = { pin: S.pin, sound: S.sound };
+    S = Object.assign(freshState(), keep); events.length = 0; save();
+    applyTheme(); renderHUD(); closeModal(); nextQuestion();
+  });
+  $('#pinBtn').onclick = () => createPin();
+  $('#closeBtn').onclick = closeModal;
+  document.querySelectorAll('#modalBody .cell').forEach(c => c.onclick = () => {
+    const a = +c.dataset.a, b = +c.dataset.b, r = S.facts[keyOf(a, b)];
+    const st = statusOf(keyOf(a, b));
+    $('#cellInfo').textContent = `${a} × ${b} = ${a * b} — ` +
+      (r && r.n ? `${r.c} of ${r.n} right (${st})` : 'not asked yet');
+  });
+}
+
+/* ===== Ambience ===== */
+function ambient() {
+  const lamps = document.querySelectorAll('.lamp'), l = lamps[Math.floor(Math.random() * lamps.length)];
+  l.classList.remove('flicker'); void l.offsetWidth; l.classList.add('flicker');
+  setTimeout(ambient, 6000 + Math.random() * 12000);
+}
+function peek() {
+  const e = $('#eyes'); e.classList.add('on');
+  setTimeout(() => e.classList.remove('on'), 2600);
+  setTimeout(peek, 25000 + Math.random() * 45000);
+}
+
+/* ===== Start ===== */
+const SPLASHES = ['Don\'t touch the walls!', 'Now with 144 facts!', '7 × 8 = 56!', 'Almond water not included!',
+  'Hmm... damp carpet.', 'Also try Level 37!', 'Bzzzzzzzzz...', '100% mob free*', 'Math is the exit!'];
+$('#splash').textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
+$('#titleStats').innerHTML = S.q
+  ? `WELCOME BACK · LEVEL ${S.level} · ${COIN} ${S.coins} · $${S.weekDollars} THIS WEEK`
+  : 'READY?';
+
+btns.forEach((b, i) => b.addEventListener('click', () => answer(i)));
+$('#parentBtn').onclick = openParent;
+$('#soundBtn').onclick = () => {
+  S.sound = (S.sound + 1) % 3; Sound.init(); Sound.click(); save(); renderHUD();
+  toast(['SOUND OFF', 'SOUND ON', 'SOUND + LIGHT HUM'][S.sound]);
+};
+$('#enterBtn').onclick = () => {
+  Sound.init(); Sound.click();
+  $('#title').classList.add('hidden'); $('#game').classList.remove('hidden');
+  checkWeek();
+  events.length ? showEvent() : nextQuestion();
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { save(); Sound.setHum(false); } else if (Sound.ctx) Sound.init();
+});
+
+applyTheme(); renderHUD();
+setTimeout(ambient, 4000);
+setTimeout(peek, 15000);
+
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+})();
+</script>
+</body>
+</html>
