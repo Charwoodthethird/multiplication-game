@@ -223,7 +223,7 @@ button { font: inherit; touch-action: manipulation; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; text-align: left; }
 .stats div { background: #b2b2b2; padding: 8px; border: 2px solid #8b8b8b; }
 .stats b { display: block; font-size: 16px; font-weight: normal; color: #222; margin-top: 4px; }
-.grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 2px; }
+.grid { display: grid; grid-template-columns: repeat(14, 1fr); gap: 2px; }
 .grid .gh { font-size: 9px; display: flex; align-items: center; justify-content: center; aspect-ratio: 1; }
 .cell { aspect-ratio: 1; border: 1px solid rgba(0,0,0,.35); padding: 0; min-width: 0; cursor: pointer; }
 .cell.known { background: #3fae3f; }
@@ -308,7 +308,11 @@ button { font: inherit; touch-action: manipulation; }
 
 /* ===== Settings (safe to tweak) ===== */
 const CONFIG = {
-  knownShare: 0.6,      // share of questions drawn from facts he already knows
+  knownShare: 0.6,      // starting share of questions drawn from facts he already knows...
+  shareMin: 0.4,        // ...which then drifts between these limits
+  shareMax: 0.85,
+  targetAccuracy: [0.75, 0.85], // keep recent accuracy in this band: challenging but not discouraging
+  fastSeconds: 6,       // a right answer slower than this only counts half toward "known"
   activeLearning: 6,    // how many not-yet-known facts are in rotation at once
   pointsPerCoin: 100,
   coinsPerDollar: 5,
@@ -318,10 +322,10 @@ const CONFIG = {
 };
 const SAVE_KEY = 'noclip-save-v1';
 
-/* ===== Facts: every pair 1-12, easiest tables introduced first ===== */
-const ORDER = [1, 10, 2, 5, 11, 3, 4, 9, 6, 12, 8, 7];
+/* ===== Facts: every pair 0-12, easiest tables introduced first ===== */
+const ORDER = [0, 1, 10, 2, 5, 11, 3, 4, 9, 6, 12, 8, 7];
 const FACTS = [];
-for (let a = 1; a <= 12; a++) for (let b = a; b <= 12; b++) {
+for (let a = 0; a <= 12; a++) for (let b = a; b <= 12; b++) {
   const r1 = ORDER.indexOf(a), r2 = ORDER.indexOf(b);
   FACTS.push({ a, b, k: a + 'x' + b, d: Math.min(r1, r2) * 20 + Math.max(r1, r2) });
 }
@@ -399,7 +403,7 @@ function weekKey(d = new Date()) {
 }
 function freshState() {
   return {
-    v: 1, facts: {}, recent: [], cur: null,
+    v: 1, facts: {}, recent: [], cur: null, share: CONFIG.knownShare, acc: [],
     bank: 0, streak: 0, best: 0, coins: 0, level: 0,
     week: weekKey(), weekDollars: 0, owed: 0, paid: 0, capNote: null,
     q: 0, right: 0, wrong: 0, earned: 0,
@@ -417,7 +421,8 @@ function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } cat
 let S = load();
 
 const rec = k => S.facts[k] || (S.facts[k] = { h: [], n: 0, c: 0, last: -99, act: false });
-// "Known" = right at least 3 of the last 4 tries (a first-try correct answer counts as known)
+// "Known" = right at least 3 of the last 4 tries (a quick first-try correct answer counts as known).
+// Slow right answers score 0.5, so shaky facts take longer to count as known.
 const isKnown = k => { const f = S.facts[k]; return !!f && f.h.length >= 3 && sum(f.h) >= 3; };
 const statusOf = k => isKnown(k) ? 'known' : (S.facts[k] && S.facts[k].n ? 'learning' : 'new');
 
@@ -446,7 +451,15 @@ function addPoints(n) {
   }
 }
 
-/* ===== Picking questions (60% known / 40% learning) ===== */
+/* ===== Picking questions (review vs. learning mix, tuned to his recent accuracy) ===== */
+function tuneShare(correct) {
+  S.acc = [...S.acc, correct ? 1 : 0].slice(-20);
+  if (S.acc.length < 10) return;
+  const acc = sum(S.acc) / S.acc.length, [lo, hi] = CONFIG.targetAccuracy;
+  if (acc > hi) S.share -= 0.02;       // cruising: bring in more new facts
+  else if (acc < lo) S.share += 0.02;  // struggling: lean on facts he knows
+  S.share = Math.min(CONFIG.shareMax, Math.max(CONFIG.shareMin, S.share));
+}
 function weightedPick(items, weights) {
   let r = Math.random() * sum(weights);
   for (let i = 0; i < items.length; i++) { r -= weights[i]; if (r <= 0) return items[i]; }
@@ -459,8 +472,8 @@ function pickFact() {
     if (!S.facts[f.k] || !S.facts[f.k].act) { rec(f.k).act = true; learning.push(f); }
   }
   const known = FACTS.filter(f => isKnown(f.k));
-  // ease into the 60/40 split so a tiny known pile doesn't repeat the same 2-3 facts
-  const share = CONFIG.knownShare * Math.min(1, known.length / 12);
+  // ease into the mix so a tiny known pile doesn't repeat the same 2-3 facts
+  const share = S.share * Math.min(1, known.length / 12);
   const useKnown = known.length && (Math.random() < share || !learning.length);
   const pool = useKnown ? known : (learning.length ? learning : FACTS);
   let choices = pool.filter(f => !S.recent.includes(f.k));
@@ -470,7 +483,7 @@ function pickFact() {
     const gap = Math.min(S.q - r.last, 40);
     if (!useKnown) return 1 + gap / 2;
     let w = 1 + gap / 4 + (4 - sum(r.h)) * 3;          // long-unseen and recently-missed come back sooner
-    if (f.a === 1 || f.a === 10 || f.b === 10) w *= 0.5; // go easy on the trivial ones
+    if (f.a <= 1 || f.a === 10 || f.b === 10) w *= 0.5;  // go easy on the trivial ones
     return w;
   });
   return weightedPick(choices, weights);
@@ -560,10 +573,13 @@ function flicker() {
   document.querySelectorAll('.lamp').forEach(l => { l.classList.remove('flicker'); void l.offsetWidth; l.classList.add('flicker'); });
 }
 function openModal(html) { $('#modalBody').innerHTML = html; $('#modalBody').scrollTop = 0; $('#modal').classList.remove('hidden'); }
-function closeModal() { $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
+function closeModal() {
+  $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = '';
+  qStart = performance.now();  // time in the parent screen doesn't count against his answer speed
+}
 
 /* ===== Game loop ===== */
-let locked = true;
+let locked = true, qStart = 0;
 const PRAISE = ['NICE!', 'CORRECT!', 'YES!', 'GOT IT!', 'SOLID!', 'EPIC!', 'LET\'S GO!'];
 
 function nextQuestion() {
@@ -578,16 +594,19 @@ function nextQuestion() {
   $('#fb').textContent = ' '; $('#fb').className = '';
   btns.forEach((btn, i) => { btn.textContent = opts[i]; btn.className = 'btn'; });
   locked = false;
+  qStart = performance.now();
 }
 
 function answer(i) {
   if (locked || !S.cur) return;
   locked = true;
   const { a, b, opts } = S.cur, p = a * b, ok = opts[i] === p, k = keyOf(a, b), r = rec(k);
+  const fast = (performance.now() - qStart) / 1000 <= CONFIG.fastSeconds;
   r.act = true;
-  if (r.n === 0 && ok) r.h = [1, 1, 1];
-  else { r.h.push(ok ? 1 : 0); if (r.h.length > 4) r.h.shift(); }
+  if (r.n === 0 && ok && fast) r.h = [1, 1, 1];
+  else { r.h.push(ok ? (fast ? 1 : 0.5) : 0); if (r.h.length > 4) r.h.shift(); }
   r.n++; if (ok) r.c++; r.last = S.q; S.q++;
+  tuneShare(ok);
   S.recent = [k, ...S.recent].slice(0, 3);
   S.cur = null;
   checkWeek();
@@ -675,11 +694,12 @@ function dashboard() {
   checkWeek();
   const total = S.right + S.wrong;
   const knownN = FACTS.filter(f => isKnown(f.k)).length;
+  const recentAcc = S.acc.length ? Math.round(sum(S.acc) / S.acc.length * 100) + '%' : '—';
   let grid = '<div class="grid"><div></div>';
-  for (let b = 1; b <= 12; b++) grid += `<div class="gh">${b}</div>`;
-  for (let a = 1; a <= 12; a++) {
+  for (let b = 0; b <= 12; b++) grid += `<div class="gh">${b}</div>`;
+  for (let a = 0; a <= 12; a++) {
     grid += `<div class="gh">${a}</div>`;
-    for (let b = 1; b <= 12; b++) grid += `<button class="cell ${statusOf(keyOf(a, b))}" data-a="${a}" data-b="${b}"></button>`;
+    for (let b = 0; b <= 12; b++) grid += `<button class="cell ${statusOf(keyOf(a, b))}" data-a="${a}" data-b="${b}"></button>`;
   }
   grid += '</div>';
   const trouble = FACTS.filter(f => S.facts[f.k] && S.facts[f.k].n && S.facts[f.k].c < S.facts[f.k].n)
@@ -700,7 +720,10 @@ function dashboard() {
       <div>Best streak<b>${S.best}</b></div>
       <div>Level / coins<b>${S.level} / ${S.coins}</b></div>
       <div>Points to coin<b>${S.bank} / ${CONFIG.pointsPerCoin}</b></div>
+      <div>Last 20 answers<b>${recentAcc} right</b></div>
+      <div>Review / new mix<b>${Math.round(S.share * 100)} / ${100 - Math.round(S.share * 100)}</b></div>
     </div>
+    <p>The mix adjusts itself to keep him around 75–85% right.</p>
     <h3>FACT MAP</h3>${grid}
     <div class="legend"><span><i style="background:#3fae3f"></i>KNOWN</span><span><i style="background:#e0a030"></i>LEARNING</span><span><i style="background:#8b8b8b"></i>NOT YET SEEN</span></div>
     <div id="cellInfo">Tap a square for details</div>
@@ -738,7 +761,7 @@ function peek() {
 }
 
 /* ===== Start ===== */
-const SPLASHES = ['Don\'t touch the walls!', 'Now with 144 facts!', '7 × 8 = 56!', 'Almond water not included!',
+const SPLASHES = ['Don\'t touch the walls!', 'Now with 169 facts!', '7 × 8 = 56!', 'Almond water not included!',
   'Hmm... damp carpet.', 'Also try Level 37!', 'Bzzzzzzzzz...', '100% mob free*', 'Math is the exit!'];
 $('#splash').textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
 $('#titleStats').innerHTML = S.q

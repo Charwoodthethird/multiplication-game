@@ -9,10 +9,11 @@ A Minecraft-style, Backrooms-themed multiplication drill for iPad (or any browse
 - 5 coins = $1, up to $5 per week (week resets Monday). Extra coins are saved for next week.
 
 ## How it picks questions
-Covers every fact from 1×1 to 12×12 (3×7 and 7×3 count as one fact).
-- **Known** = right on at least 3 of the last 4 tries (or right the very first time).
-- About 60% of questions come from known facts (review) and 40% from facts he's still learning.
-- Six not-yet-known facts are in rotation at a time, introduced easiest first (×1, ×10, ×2, ×5, ×11, ×3, ×4, ×9, ×6, ×12, ×8, ×7). When one becomes known, the next one comes in.
+Covers every fact from 0×0 to 12×12 (3×7 and 7×3 count as one fact), in random order.
+- **Known** = right on at least 3 of the last 4 tries (or right, quickly, the very first time). A right answer that takes longer than 6 seconds only counts half, so facts he's working out rather than recalling keep coming back.
+- Questions are a mix of review (known facts) and learning (facts not yet known). The mix starts at 60/40 and adjusts itself to keep his last 20 answers around 75–85% right, the range where kids stay engaged without getting bored or discouraged. It stays between 40% and 85% review.
+- Six not-yet-known facts are in rotation at a time, introduced easiest first (×0, ×1, ×10, ×2, ×5, ×11, ×3, ×4, ×9, ×6, ×12, ×8, ×7). When one becomes known, the next one comes in.
+- Review questions favor facts he hasn't seen in a while or missed recently.
 
 ## Parent screen
 Tap the padlock in the top-right corner. You'll set a 4-digit PIN the first time. From there you can see dollars owed and tap **Mark paid**, view stats and a 12×12 map of known facts, see which facts need practice, change the PIN, or reset everything.
