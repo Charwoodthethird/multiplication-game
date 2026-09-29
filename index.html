@@ -236,6 +236,42 @@ button { font: inherit; touch-action: manipulation; }
 .trouble li { display: flex; justify-content: space-between; padding: 7px 4px; border-bottom: 2px solid #b0b0b0; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+/* Creature encounter */
+#game { transition: transform .6s cubic-bezier(.2, 1.5, .4, 1), opacity .5s, filter .5s; }
+#game.knocked {
+  transform: translate(38vw, 22vh) rotate(28deg) scale(.75); opacity: .3; filter: blur(2px); pointer-events: none;
+  transition: transform .3s cubic-bezier(.6, 0, .9, .5), opacity .3s, filter .3s;
+}
+body.quake .wall, body.quake .ceiling, body.quake .floor, body.quake .door { animation: quake .1s linear 5; }
+@keyframes quake { 0%,100% { transform: translate(0, 0); } 25% { transform: translate(-6px, 4px); } 75% { transform: translate(6px, -4px); } }
+#enc {
+  position: fixed; inset: 0; z-index: 8; touch-action: none; cursor: pointer;
+  background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,.15), rgba(0,0,0,.8));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  padding: var(--ceil-h) 16px 16px;
+}
+#encTitle { font-size: clamp(14px, 2.8vw, 26px); color: #ff6b5e; text-shadow: 3px 3px 0 #000; text-align: center; line-height: 1.5; }
+#encHint { font-size: clamp(12px, 2vw, 18px); color: #fff; text-shadow: 2px 2px 0 #000; animation: splash .3s ease-in-out infinite alternate; }
+#cwrap { animation: creatureIn .45s cubic-bezier(.2, 1.4, .5, 1) 1; }
+#cwrap.flee { animation: flee .8s ease-in forwards; }
+#cwrap.fade { animation: fadeAway 1.2s ease-in forwards; }
+#creature { width: min(46vw, 42vh, 380px); aspect-ratio: 1; animation: wander 2.4s ease-in-out infinite alternate; filter: drop-shadow(0 0 18px var(--glow)); }
+#creature svg { width: 100%; height: 100%; display: block; }
+#creature.hit svg { animation: hitFlash .12s 1; }
+@keyframes creatureIn { from { transform: translateX(-70vw) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes wander { 0% { transform: translate(-7vw, -2vh) rotate(-6deg); } 50% { transform: translate(4vw, 2vh) rotate(4deg); } 100% { transform: translate(8vw, -3vh) rotate(-3deg); } }
+@keyframes hitFlash { 0% { filter: brightness(3); transform: scale(.9); } 100% { filter: none; transform: none; } }
+@keyframes flee { to { transform: translate(60vw, -60vh) rotate(540deg) scale(.1); opacity: 0; } }
+@keyframes fadeAway { to { transform: scale(.7); opacity: 0; filter: brightness(0); } }
+.enc-bars { width: min(90vw, 460px); display: flex; flex-direction: column; gap: 10px; }
+.enc-bar { display: flex; align-items: center; gap: 10px; font-size: 11px; text-shadow: 2px 2px 0 #000; }
+.enc-bar span { width: 44px; }
+.enc-bar .bar { flex: 1; height: 16px; background: #1b1b1b; border: 3px solid #000; }
+#hpFill { height: 100%; width: 100%; background: linear-gradient(#ff7a6b, #c62a1e); transition: width .08s; }
+#timeFill { height: 100%; width: 100%; background: linear-gradient(#fff38a, #e0b020); }
+.spark { position: fixed; width: 14px; height: 14px; background: #fff; box-shadow: 0 0 8px #fff; pointer-events: none; animation: spark .5s ease-out forwards; }
+@keyframes spark { from { transform: translate(-50%, -50%); opacity: 1; } to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.3); opacity: 0; } }
+
 @media (max-width: 560px) {
   .door { display: none; }
   .hud { flex-wrap: wrap; }
@@ -265,6 +301,7 @@ button { font: inherit; touch-action: manipulation; }
         <li><b>20 in a row:</b> +2 bonus</li>
         <li><b>100 points</b> = 1 coin = next level</li>
         <li><b>5 coins</b> = $1 (up to $5 a week)</li>
+        <li><b>Creatures lurk here.</b> Tap fast to scare them off for +1</li>
       </ul>
     </div>
     <div id="titleStats"></div>
@@ -300,6 +337,16 @@ button { font: inherit; touch-action: manipulation; }
   </section>
 </div>
 
+<div id="enc" class="hidden">
+  <div id="encTitle"></div>
+  <div id="cwrap"><div id="creature"></div></div>
+  <div class="enc-bars">
+    <div class="enc-bar"><span>IT</span><div class="bar"><div id="hpFill"></div></div></div>
+    <div class="enc-bar"><span>TIME</span><div class="bar"><div id="timeFill"></div></div></div>
+  </div>
+  <div id="encHint">TAP FAST TO SCARE IT OFF!</div>
+</div>
+
 <div id="modal" class="hidden"><div class="mc" id="modalBody"></div></div>
 
 <script>
@@ -319,6 +366,10 @@ const CONFIG = {
   weeklyDollarCap: 5,   // week resets Monday
   bonusAt10: 1,         // extra points at 10 in a row (and 30, 50...)
   bonusAt20: 2,         // extra points at 20 in a row (and 40, 60...)
+  creatureMinutes: [15, 40], // a creature shows up after this much active play (random in range)
+  firstCreatureMinutes: [4, 10],
+  creatureTaps: 18,     // taps needed to scare it off...
+  creatureSeconds: 5,   // ...within this many seconds
 };
 const SAVE_KEY = 'noclip-save-v1';
 
@@ -408,6 +459,7 @@ function freshState() {
     week: weekKey(), weekDollars: 0, owed: 0, paid: 0, capNote: null,
     q: 0, right: 0, wrong: 0, earned: 0,
     pin: null, sound: 1,
+    playSec: 0, nextCreature: null, creatureWins: 0,
   };
 }
 function load() {
@@ -525,6 +577,19 @@ const Sound = {
   bonus() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, .12, 'square', .06, i * .08)); },
   coin() { [988, 1319, 1568, 1976].forEach((f, i) => this.tone(f, .16, 'square', .05, i * .09)); },
   click() { this.tone(420, .03, 'square', .03); },
+  hit() { this.tone(180 + Math.random() * 140, .05, 'square', .06); },
+  sad() { [392, 330, 262].forEach((f, i) => this.tone(f, .18, 'triangle', .07, i * .15)); },
+  roar() {  // rumbly growl: filtered noise plus low buzz
+    if (!this.ctx || !S.sound) return;
+    const c = this.ctx, t = c.currentTime, len = Math.floor(c.sampleRate * .7);
+    const buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = c.createBufferSource(), lp = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = buf; lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(120, t + .7);
+    g.gain.value = .25; src.connect(lp); lp.connect(g); g.connect(c.destination); src.start(t);
+    this.tone(110, .5, 'sawtooth', .06); this.tone(82, .6, 'sawtooth', .05, .1);
+  },
   setHum(on) {  // fluorescent-light buzz
     if (on && this.ctx && !this.hum) {
       const c = this.ctx, g = c.createGain(), lp = c.createBiquadFilter();
@@ -629,9 +694,14 @@ function answer(i) {
     $('#fb').textContent = `${a} × ${b} = ${p}`; $('#fb').className = 'bad';
     delay = 1900;
   }
+  S.playSec += Math.min(20, (performance.now() - qStart) / 1000) + delay / 1000;  // idle time doesn't count
   renderHUD(); save();
-  setTimeout(() => events.length ? showEvent() : nextQuestion(), delay);
+  setTimeout(() => {
+    if (!events.length && S.playSec >= S.nextCreature) creatureAttack(false, afterAnswer);
+    else afterAnswer();
+  }, delay);
 }
+const afterAnswer = () => events.length ? showEvent() : nextQuestion();
 
 function showEvent() {
   const e = events.shift();
@@ -653,6 +723,85 @@ function showEvent() {
   }
   openModal(html + '<button class="btn wide" id="evOk">CONTINUE</button>');
   $('#evOk').onclick = showEvent;
+}
+
+/* ===== Creature encounters ===== */
+const CREATURES = [
+  { line: 'A SMILER CREPT OUT OF THE DARK!', glow: '#ffffff', pal: { '#': '#0b0b0b', e: '#ffffff', t: '#f4f4f4' }, rows: [
+    '.....######.....', '...##########...', '..############..', '.##############.',
+    '.###ee####ee###.', '.###ee####ee###.', '################', '################',
+    '##t##########t##', '##tt########tt##', '###tttttttttt###', '####t#t##t#t####',
+    '.##############.', '..############..', '...##########...', '.....######.....'] },
+  { line: 'A DEATHMOTH SWOOPED IN!', glow: '#ffcf7a', pal: { w: '#8a6a3a', d: '#5b4323', b: '#2e2012', s: '#e8d9a8', e: '#ff4a3a' }, rows: [
+    '..ww...b..b.ww..', '.wwww...bb..www.', 'wwsswwbbbbwwssww', 'wwsswwbeebwwssww',
+    'wwwwwwbbbbwwwwww', '.wwwwwdbbdwwwww.', '..wwwwdbbdwwww..', '...wwdbbbbdww...',
+    '..wwwdbbbbdwww..', '.wwwwwdbbdwwwww.', 'wwddwwwbbwwwddww', 'wwddww.bb.wwddww',
+    '.wwww..bb..wwww.', '..ww...bb...ww..', '.......b........', '................'] },
+  { line: 'A PARTYGOER WANTS TO PARTY! =)', glow: '#ffe14a', pal: { o: '#a67c00', y: '#ffd21f', k: '#111111', s: '#dddddd' }, rows: [
+    '..oooooooooooo..', '.oyyyyyyyyyyyyo.', 'oyyyyyyyyyyyyyyo', 'oyyykkyyyykkyyyo',
+    'oyyykkyyyykkyyyo', 'oyyyyyyyyyyyyyyo', 'oyyyyyyyyyyyyyyo', 'oyykyyyyyyyykyyo',
+    'oyyykyyyyyykyyyo', 'oyyyykkkkkkyyyyo', 'oyyyyyyyyyyyyyyo', '.oyyyyyyyyyyyyo.',
+    '..oooooooooooo..', '.......oo.......', '........s.......', '.......s........'] },
+];
+function sprite(rows, pal) {
+  let r = '';
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (pal[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${pal[ch]}"/>`; }));
+  return `<svg viewBox="0 0 16 16" shape-rendering="crispEdges">${r}</svg>`;
+}
+const between = ([lo, hi]) => (lo + Math.random() * (hi - lo)) * 60;
+function scheduleCreature(first) {
+  S.nextCreature = S.playSec + between(first ? CONFIG.firstCreatureMinutes : CONFIG.creatureMinutes);
+}
+
+// practice = parent's test run: no bonus point, doesn't change the schedule
+function creatureAttack(practice, done) {
+  const c = CREATURES[Math.floor(Math.random() * CREATURES.length)];
+  const need = CONFIG.creatureTaps, ms = CONFIG.creatureSeconds * 1000, grace = 700;
+  const box = $('#enc'), wrap = $('#cwrap'), cr = $('#creature');
+  cr.innerHTML = sprite(c.rows, c.pal);
+  cr.style.setProperty('--glow', c.glow);
+  $('#encTitle').textContent = c.line;
+  wrap.className = ''; box.classList.remove('hidden');
+  $('#game').classList.add('knocked'); document.body.classList.add('quake');
+  flicker(); Sound.roar();
+  let hits = 0, over = false, raf;
+  const start = performance.now();
+  const bars = () => {
+    const left = 1 - Math.max(0, performance.now() - start - grace) / ms;
+    $('#hpFill').style.width = (100 - hits / need * 100) + '%';
+    $('#timeFill').style.width = Math.max(0, left * 100) + '%';
+    return left;
+  };
+  const tick = () => { if (bars() <= 0) finish(false); else raf = requestAnimationFrame(tick); };
+  box.onpointerdown = e => {
+    e.preventDefault();
+    if (over || performance.now() - start < grace) return;  // ignore the tap that answered the question
+    hits++; Sound.hit(); bars();
+    cr.classList.remove('hit'); void cr.offsetWidth; cr.classList.add('hit');
+    const sp = document.createElement('i'); sp.className = 'spark';
+    sp.style.left = e.clientX + 'px'; sp.style.top = e.clientY + 'px';
+    sp.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    sp.style.setProperty('--dy', (Math.random() * -90 - 20) + 'px');
+    box.appendChild(sp); setTimeout(() => sp.remove(), 500);
+    if (hits >= need) finish(true);
+  };
+  function finish(won) {
+    if (over) return; over = true;
+    cancelAnimationFrame(raf); box.onpointerdown = null;
+    wrap.className = won ? 'flee' : 'fade';
+    if (won) {
+      Sound.coin();
+      if (practice) toast('SCARED IT OFF!');
+      else { toast('SCARED IT OFF! +1 BONUS'); S.creatureWins++; addPoints(1); floatTxt('+1', 'good'); }
+    } else { Sound.sad(); toast('IT WANDERED OFF...'); }
+    if (!practice) { scheduleCreature(false); save(); renderHUD(); }
+    setTimeout(() => {
+      box.classList.add('hidden'); box.querySelectorAll('.spark').forEach(s => s.remove());
+      $('#game').classList.remove('knocked'); document.body.classList.remove('quake');
+      setTimeout(done, 650);
+    }, 1400);
+  }
+  raf = requestAnimationFrame(tick);
 }
 
 /* ===== Parent area ===== */
@@ -730,15 +879,21 @@ function dashboard() {
     <h3>NEEDS PRACTICE</h3><ul class="trouble">${trouble}</ul>
     <h3>SETTINGS</h3>
     <div class="row2"><button class="btn" id="pinBtn">CHANGE PIN</button><button class="btn" id="resetBtn">RESET ALL</button></div>
+    <p>Creatures scared off: ${S.creatureWins}. Next one in about ${Math.max(0, Math.round((S.nextCreature - S.playSec) / 60))} min of play.</p>
+    <button class="btn wide ghost" id="testCreature">TEST A CREATURE</button>
     <button class="btn wide" id="closeBtn">BACK TO GAME</button>`);
 
   twoTap($('#paidBtn'), () => { S.paid += S.owed; S.owed = 0; save(); dashboard(); });
   twoTap($('#resetBtn'), () => {
     const keep = { pin: S.pin, sound: S.sound };
-    S = Object.assign(freshState(), keep); events.length = 0; save();
+    S = Object.assign(freshState(), keep); events.length = 0; scheduleCreature(true); save();
     applyTheme(); renderHUD(); closeModal(); nextQuestion();
   });
   $('#pinBtn').onclick = () => createPin();
+  $('#testCreature').onclick = () => {
+    closeModal(); locked = true;
+    creatureAttack(true, () => { locked = false; qStart = performance.now(); });
+  };
   $('#closeBtn').onclick = closeModal;
   document.querySelectorAll('#modalBody .cell').forEach(c => c.onclick = () => {
     const a = +c.dataset.a, b = +c.dataset.b, r = S.facts[keyOf(a, b)];
@@ -784,6 +939,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { save(); Sound.setHum(false); } else if (Sound.ctx) Sound.init();
 });
 
+if (S.nextCreature == null) { scheduleCreature(true); save(); }
 applyTheme(); renderHUD();
 setTimeout(ambient, 4000);
 setTimeout(peek, 15000);

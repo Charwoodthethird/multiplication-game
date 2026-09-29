@@ -8,6 +8,9 @@ A Minecraft-style, Backrooms-themed multiplication drill for iPad (or any browse
 - 100 points = 1 coin = the next Backrooms level (new look).
 - 5 coins = $1, up to $5 per week (week resets Monday). Extra coins are saved for next week.
 
+## Creature encounters
+Every 15–40 minutes of active play (the first one after 4–10 minutes), a Backrooms creature (Smiler, Deathmoth or Partygoer) knocks the question panel away between questions. Tapping 18 times in 5 seconds scares it off for +1 bonus point. Failing costs nothing. Idle time doesn't count toward the timer. The parent screen has a **Test a creature** button.
+
 ## How it picks questions
 Covers every fact from 0×0 to 12×12 (3×7 and 7×3 count as one fact), in random order.
 - **Known** = right on at least 3 of the last 4 tries (or right, quickly, the very first time). A right answer that takes longer than 6 seconds only counts half, so facts he's working out rather than recalling keep coming back.
